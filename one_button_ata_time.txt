@@ -70,7 +70,7 @@ if (sw5State == LOW) {
 }
 
 
-  // ✅ Handle SW6: Green LED blinks at 2 Hz on release
+  // ✅ Handle Sw6: Green LED blinks at 2 Hz on release
  static bool sw6WasPressed = false;
 
 if (sw6State == LOW) {
