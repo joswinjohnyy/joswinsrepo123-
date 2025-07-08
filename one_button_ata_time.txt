@@ -1,21 +1,29 @@
 // --- Pin Definitions ---
 const int SW4 = 35;
-const int SW5 = 36;
-const int SW6 = 39;
+const int SW5 = 39;
+const int SW6 = 36;
 
 const int RED_LED = 4;
 const int GREEN_LED = 2;
 
-// --- Timing Variables ---
-unsigned long lastBlinkTime = 0;
-bool ledState = false;
+// --- Timing & State Variables ---
+unsigned long lastRedBlinkTime = 0;
+unsigned long lastGreenBlinkTime = 0;
+bool redLedState = false;
+bool greenLedState = false;
+
 unsigned long sw5PressStart = 0;
 bool sw5LongPressHandled = false;
 
+bool redBlinkActive = false;
+bool greenBlinkActive = false;
+
+int lastSw6State = HIGH; // For detecting release of SW6
+
 void setup() {
-  pinMode(SW4, INPUT); // External pull-up needed for GPIO34, GPIO35
+  pinMode(SW4, INPUT);
   pinMode(SW5, INPUT);
-  pinMode(SW6, INPUT); // Internal pull-up for SW6 (GPIO32)
+  pinMode(SW6, INPUT);
 
   pinMode(RED_LED, OUTPUT);
   pinMode(GREEN_LED, OUTPUT);
@@ -31,63 +39,76 @@ void loop() {
 
   int activeSwitches = (sw4State == LOW) + (sw5State == LOW) + (sw6State == LOW);
 
-  // ❌ More than one switch pressed — do nothing
+  // ❌ If more than one switch is pressed, turn everything off
   if (activeSwitches > 1) {
+    redBlinkActive = false;
+    greenBlinkActive = false;
     digitalWrite(RED_LED, LOW);
     digitalWrite(GREEN_LED, LOW);
+    return;
+  }
+
+  // ✅ SW4: Start RED blinking at 10 Hz ONLY if GREEN is not blinking
+  if (sw4State == LOW && !redBlinkActive && !greenBlinkActive) {
+    redBlinkActive = true;
+    greenBlinkActive = false;
+    redLedState = true;
+    digitalWrite(RED_LED, redLedState);
+    digitalWrite(GREEN_LED, LOW);
+    lastRedBlinkTime = millis();
+  }
+
+  // 🔁 RED blinking logic
+  if (redBlinkActive) {
+    unsigned long currentTime = millis();
+    if (currentTime - lastRedBlinkTime >= 50) { // 10 Hz = toggle every 50ms
+      redLedState = !redLedState;
+      digitalWrite(RED_LED, redLedState);
+      lastRedBlinkTime = currentTime;
+    }
+  }
+
+  // ✅ SW5: Short press = stop RED, Long press = stop GREEN
+  if (sw5State == LOW) {
+    if (sw5PressStart == 0) {
+      sw5PressStart = millis();
+    } else if ((millis() - sw5PressStart) >= 2000 && !sw5LongPressHandled) {
+      greenBlinkActive = false;
+      digitalWrite(GREEN_LED, LOW);
+      greenLedState = false;
+      sw5LongPressHandled = true;
+    }
+  } else {
+    if (sw5PressStart != 0 && !sw5LongPressHandled) {
+      redBlinkActive = false;
+      digitalWrite(RED_LED, LOW);
+      redLedState = false;
+    }
     sw5PressStart = 0;
     sw5LongPressHandled = false;
-    return;
   }
 
-  // ✅ Handle SW4: RED LED at 10 Hz
-  if (sw4State == LOW) {
-    unsigned long currentTime = millis();
-    if (currentTime - lastBlinkTime >= 50) { // 10Hz → toggle every 50ms
-      ledState = !ledState;
-      digitalWrite(RED_LED, ledState);
-      lastBlinkTime = currentTime;
+  // ✅ SW6: Only on RELEASE → Start GREEN blinking at 2 Hz (ONLY if RED is off)
+  if (lastSw6State == LOW && sw6State == HIGH) {
+    if (!redBlinkActive && !greenBlinkActive) {
+      greenBlinkActive = true;
+      redBlinkActive = false;
+      digitalWrite(RED_LED, LOW);
+      redLedState = false;
+      lastGreenBlinkTime = millis();
     }
-    digitalWrite(GREEN_LED, LOW); // Make sure green is off
-    return;
   }
-// ✅ Handle SW5: RED OFF on short press; GREEN OFF on long press
-if (sw5State == LOW) {
-  if (sw5PressStart == 0) {
-    sw5PressStart = millis(); // Start timing press
-  } else if ((millis() - sw5PressStart) >= 2000 && !sw5LongPressHandled) {
-    // Long press detected → Turn OFF green LED
-    digitalWrite(GREEN_LED, LOW);
-    sw5LongPressHandled = true;
+
+  // ⏪ Update last state AFTER processing
+  lastSw6State = sw6State;
+
+  // 🔁 GREEN blinking logic
+  if (greenBlinkActive) {
+    unsigned long currentTime = millis();
+    if (currentTime - lastGreenBlinkTime >= 250) { // 2 Hz = toggle every 250ms
+      greenLedState = !greenLedState;
+      digitalWrite(GREEN_LED, greenLedState);
+      lastGreenBlinkTime = currentTime;
+    }
   }
-} else {
-  if (sw5PressStart != 0 && !sw5LongPressHandled) {
-    // Short press detected → Turn OFF red LED
-    digitalWrite(RED_LED, LOW);
-  }
-  sw5PressStart = 0;
-  sw5LongPressHandled = false;
-}
-
-
-  // ✅ Handle Sw6: Green LED blinks at 2 Hz on release
- static bool sw6WasPressed = false;
-
-if (sw6State == LOW) {
-  sw6WasPressed = true;
-}
-
-if (sw6State == HIGH && sw6WasPressed) {
-  // Button just released
-  unsigned long currentTime = millis();
-  if (currentTime - lastBlinkTime >= 250) { // 2Hz → toggle every 250ms
-    ledState = !ledState;
-    digitalWrite(GREEN_LED, ledState);
-    lastBlinkTime = currentTime;
-  }
-  digitalWrite(RED_LED, LOW); // Make sure red is off
-} 
-else if (sw6State == HIGH) {
-  sw6WasPressed = false;
-}
 }
